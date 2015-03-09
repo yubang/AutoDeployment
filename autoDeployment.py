@@ -123,6 +123,25 @@ class FsSaveGetSystem():
     "文件仓库存储系统类"
     def __init__(self):
         pass
+    def addNewFile(self,filePath,path="."):
+        "添加新文件到文件仓库"
+        global applicationPath
+        if(os.path.isdir(filePath)):
+            if(not os.path.exists(applicationPath+"/fsData/"+path)):
+                os.makedirs(applicationPath+"/fsData/"+path)
+            fps=os.listdir(filePath)
+            for fp in fps:
+                self.addNewFile(filePath+"/"+fp,path+"/"+fp)
+        else:
+            if(not os.path.exists(applicationPath+"/fsData/"+path)):
+                in_fp=open(filePath,'rb')
+                out_fp=open(applicationPath+"/fsData/"+path,'wb')
+                out_fp.write(in_fp.read())
+                in_fp.close()
+                out_fp.close()
+            else:
+                print unicode("忽略文件：%s"%(path),"UTF-8")
+            
         
         
 #--------------------------------------------
@@ -221,7 +240,39 @@ class Core():
             patchSystem=PatchSystem()
             patchSystem.buildPatch(lists1,lists2,applicationPath+"/patch/patch")
             print unicode("生成补丁包完成，补丁包(文件夹)输出于：%s"%(applicationPath+"/patch/patch"),"UTF-8")
-            
+    
+    def __commit(self):
+        "提交一个补丁包"
+        global applicationPath
+        v=0
+        while True:
+            targetPath=applicationPath+"/version/"+str(v)
+            if(not os.path.exists(targetPath)):
+                break
+            v=v+1
+        os.makedirs(targetPath)
+        
+        if(not os.path.exists(sys.argv[2])):
+            print unicode("补丁包（%s）不存在"%(sys.argv[2]),"UTF-8")
+            return None
+        
+        in_fp=open(sys.argv[2]+"/new",'rb')
+        out_fp=open(targetPath+"/new",'wb')
+        out_fp.write(in_fp.read())
+        in_fp.close()
+        out_fp.close()
+        
+        in_fp=open(sys.argv[2]+"/update",'rb')
+        out_fp=open(targetPath+"/update",'wb')
+        out_fp.write(in_fp.read())
+        in_fp.close()
+        out_fp.close()
+        
+        #文件仓库加入新增文件
+        fsSaveGetSystem=FsSaveGetSystem()
+        fsSaveGetSystem.addNewFile(sys.argv[2]+"/data")
+        print unicode("成功处理补丁包，当前版本号：%d"%(v),"UTF-8")
+                
     def init(self):
         "入口函数处理命令行参数"
         if(len(sys.argv)==1):
@@ -233,7 +284,9 @@ class Core():
             elif(sys.argv[1]=='--patch'):
                 "生成补丁包"
                 self.__patch()
-                    
+            elif(sys.argv[1]=='--commit'):
+                "提交一个补丁包"
+                self.__commit()        
                                
 applicationPath=os.path.dirname(os.path.realpath(__file__))
 

@@ -16,7 +16,7 @@ log 日记存放目录
 temp 临时目录
 """
 
-import os,sys,hashlib,json,re,base64
+import os,sys,hashlib,json,re,base64,time
 
 #--------------------------------------------
 #文件列表转md5列表
@@ -272,6 +272,13 @@ class Core():
         fsSaveGetSystem=FsSaveGetSystem()
         fsSaveGetSystem.addNewFile(sys.argv[2]+"/data")
         print unicode("成功处理补丁包，当前版本号：%d"%(v),"UTF-8")
+    
+    def __release(self):
+        "显示当前的提交的版本列表"
+        global applicationPath
+        fps=os.listdir(applicationPath+"/version")
+        for temp in fps:
+            print unicode("提交的版本号：%s(提交时间:%s)"%(temp,time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(os.path.getmtime(applicationPath+"/version/"+temp)))),"UTF-8")
                 
     def init(self):
         "入口函数处理命令行参数"
@@ -287,7 +294,10 @@ class Core():
             elif(sys.argv[1]=='--commit'):
                 "提交一个补丁包"
                 self.__commit()        
-                               
+            elif(sys.argv[1]=='--release'):
+                "显示提交的版本列表"
+                self.__release()
+                                   
 applicationPath=os.path.dirname(os.path.realpath(__file__))
 
 if __name__ == "__main__":

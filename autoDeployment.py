@@ -3,6 +3,7 @@
 """
 一个基于python的自动化部署程序
 @author:yubang
+版本：1.0
 2015-03-09
 """
 
@@ -173,7 +174,17 @@ class FsCheckSystem():
     "部署文件一致性检测类"
     def __init__(self):
         pass
-        
+    def check(self,updateList):
+        "检测是否可以部署"
+        result=True
+        fsSaveGetSystem=FsSaveGetSystem()
+        for temp in updateList:
+            t=temp.split("|")
+            if(t[2]=='add' or t[2]=='update'):
+                if(not fsSaveGetSystem.checkFile(t[1])):
+                    print unicode("缺失文件：%s（md5：%s）"%(base64.b64decode(t[0]),t[1].encode("UTF-8")),"UTF-8")
+                    result=False
+        return result
         
 #--------------------------------------------
 #文件仓库存储系统
@@ -211,7 +222,16 @@ class FsSaveGetSystem():
             return True,text
         else:
             return False,None            
-        
+    def checkFile(self,md5):
+        "检测文件是否存在"
+        if(md5=="#"):
+            return True
+        global applicationPath
+        path=applicationPath+"/fsData/"+md5[0:8]+"/"+md5[8:16]+"/"+md5[16:24]+"/"+md5[24:32]
+        if(os.path.exists(path)):
+            return True
+        else:
+            return False    
         
 #--------------------------------------------
 #日记系统
@@ -370,8 +390,17 @@ class Core():
             dao=PatchSystem()
             updateList=dao.getDifferentList(lists,oldLists)
             
+            
             #检测新版是否可以部署（文件完整性）
-            if(True):
+            fsCheckSystem=FsCheckSystem()
+            if(fsCheckSystem.check(updateList)):
+                
+                #备份代码，防止出错的时候可以回滚
+                tools=Tools()
+                tools.removeFileOrDir(applicationPath+"/temp/backup")
+                tools.copyFileOrDir(sys.argv[3],applicationPath+"/temp/backup")
+        
+                
                 tools=Tools()
                 fsSaveGetSystem=FsSaveGetSystem()
                 for command in updateList:
@@ -393,7 +422,6 @@ class Core():
                                 fp.write(text)
                                 fp.close()
                     elif(texts[2]=="delete"):
-                        print target+"/"+base64.b64decode(texts[0])
                         if(base64.b64decode(texts[0])!="."):
                             tools.removeFileOrDir(target+"/"+base64.b64decode(texts[0]))
             else:
@@ -403,11 +431,6 @@ class Core():
         else:
             print unicode("该版本（%s）不存在"%(version),"UTF-8")
             return -1
-        
-        #备份代码，防止出错的时候可以回滚
-        tools=Tools()
-        tools.removeFileOrDir(applicationPath+"/temp/backup")
-        tools.copyFileOrDir(sys.argv[3],applicationPath+"/temp/backup")
         
         #部署阶段完成，等待用户确认
         print unicode("代码部署完成，请检查部署情况，如果需要回退请按R或r，其它则不回退！","UTF-8")

@@ -19,6 +19,57 @@ temp 临时目录
 import os,sys,hashlib,json,re,base64,time
 
 #--------------------------------------------
+#工具类
+#--------------------------------------------
+class Tools():
+    "工具类"
+    def __init__(self):
+        pass
+    def removeFileOrDir(self,path):
+        "删除文件或递归删除文件夹"
+        result=True
+        if(os.path.exists(path)):
+            if(os.path.isfile(path)):
+                os.remove(path)
+            else:
+                fps=os.listdir(path)
+                for fp in fps:
+                    result=self.removeFileOrDir(path+"/"+fp)
+                    if(not result):
+                        return result
+                os.rmdir(path)
+        else:
+            result=False
+        return result
+    def copyFileOrDir(self,oldPath,newPath):
+        "复制文件或递归复制文件夹"
+        result=True
+        if(os.path.exists(oldPath)):
+            if(os.path.isfile(oldPath)):
+                #防止父目录不存在
+                path=os.path.dirname(newPath)
+                if(not os.path.exists(path)):
+                    os.makedirs(path)
+                #文件复制
+                in_fp=open(oldPath,'rb')
+                out_fp=open(newPath,'wb')
+                out_fp.write(in_fp.read())
+                in_fp.close()
+                out_fp.close()
+            else:
+                if(not os.path.exists(newPath)):
+                    os.makedirs(newPath)
+                fps=os.listdir(oldPath)
+                for fp in fps:
+                    result=self.copyFileOrDir(oldPath+"/"+fp,newPath+"/"+fp)
+                    if(not result):
+                        return result
+        else:
+            result=False
+        return result
+        
+
+#--------------------------------------------
 #文件列表转md5列表
 #--------------------------------------------
 class FsToDataSystem():
@@ -52,7 +103,7 @@ class PatchSystem():
     "补丁包生成类"
     def __init__(self):
         pass
-    def __getAddFile(self,lists,path):
+    def __getAddFile(self,lists,path,path2):
         "提取新增加的文件"
         global applicationPath
         dirPath=applicationPath+"/patch/patch/data/"
@@ -60,7 +111,7 @@ class PatchSystem():
         for temp in lists:
             texts=temp.split("|")
             if(texts[2]=="add" and texts[1]!="#"):
-                filePath=sys.argv[2]+"/"+base64.b64decode(texts[0])
+                filePath=path2+"/"+base64.b64decode(texts[0])
                 targetDirPath=dirPath+texts[1][0:8]+"/"+texts[1][8:16]+"/"+texts[1][16:24]
                 if(not os.path.exists(targetDirPath)):
                     os.makedirs(targetDirPath)
@@ -69,6 +120,13 @@ class PatchSystem():
                 out_fp.write(in_fp.read())
                 in_fp.close()
                 out_fp.close()
+    
+    def getDifferentList(self,newLists,oldList):
+        "获取差异列表"
+        result=[]
+        result=self.__checkDifferent(newLists,oldList,result,"add")
+        result=self.__checkDifferen(oldList,newLists,result,"delete")
+        return result
                 
     def __checkDifferent(self,a,b,lists,status):
         "生成补丁包差异列表"
@@ -86,11 +144,11 @@ class PatchSystem():
             if(not sign):
                 lists.append("%s|%s|%s"%(base64.b64encode(t1),a[t1],status))
         return lists
-    def buildPatch(self,newLists,oldList,path):
+    def buildPatch(self,newLists,oldList,path,path2):
         "生成补丁包"
         if(os.path.exists(path)):
             print unicode("补丁包目录(%s)已经存在，中断操作！"%(path),"UTF-8")
-            return None
+            return False
         else:
             os.makedirs(path)
             result=[]
@@ -105,7 +163,8 @@ class PatchSystem():
             fp.write(json.dumps(newLists))
             fp.close()
             
-            self.__getAddFile(result,path)
+            self.__getAddFile(result,path,path2)
+            return True
             
 #--------------------------------------------
 #部署文件一致性检测
@@ -184,6 +243,7 @@ class Core():
                 
     def __deleteTempDirFile(self,tempDirPath=None):
         "删除临时目录内容"
+        return None
         if(tempDirPath==None):
             global applicationPath
             tempDirPath=applicationPath+"/temp"
@@ -238,8 +298,9 @@ class Core():
                 fp.close()
             
             patchSystem=PatchSystem()
-            patchSystem.buildPatch(lists1,lists2,applicationPath+"/patch/patch")
-            print unicode("生成补丁包完成，补丁包(文件夹)输出于：%s"%(applicationPath+"/patch/patch"),"UTF-8")
+            result=patchSystem.buildPatch(lists1,lists2,applicationPath+"/patch/patch",sys.argv[2])
+            if(result):
+                print unicode("生成补丁包完成，补丁包(文件夹)输出于：%s"%(applicationPath+"/patch/patch"),"UTF-8")
     
     def __commit(self):
         "提交一个补丁包"
@@ -279,6 +340,54 @@ class Core():
         fps=os.listdir(applicationPath+"/version")
         for temp in fps:
             print unicode("提交的版本号：%s(提交时间:%s)"%(temp,time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(os.path.getmtime(applicationPath+"/version/"+temp)))),"UTF-8")
+    
+    def __deploy(self,version,target):
+        "部署代码"
+        global applicationPath
+        
+        #提取版本列表
+        path=applicationPath+"/"+version+"/new"
+        if(os.path.exists(path)):
+            #新版
+            fp=open(path,'r')
+            lists=json.loads(fp.read())
+            fp.close()
+            #旧版
+            dao=FsToDataSystem()
+            oldLists=dao.getMd5Lists(target)
+            
+            #获取升级列表
+            dao=PatchSystem()
+            updateList=dao.getDifferentList(lists,oldLists)
+            
+            #检测新版是否可以部署（文件完整性）
+            if(True):
+                for command in updateList:
+                    print command
+            else:
+                print unicode("由于缺失文件，部署终止！","UTF-8")
+                return -2
+            
+        else:
+            print unicode("该版本（%s）不存在"%(version),"UTF-8")
+            return -1
+        
+        #备份代码，防止出错的时候可以回滚
+        tools=Tools()
+        tools.removeFileOrDir(applicationPath+"/temp/backup")
+        tools.copyFileOrDir(sys.argv[3],applicationPath+"/temp/backup")
+        
+        #部署阶段完成，等待用户确认
+        print unicode("代码部署完成，请检查部署情况，如果需要回退请按R或r，其它则不回退！","UTF-8")
+        ch=raw_input(unicode("请输入：","UTF-8").encode("UTF-8"))
+        if(ch=='r' or ch == 'R'):
+            if(tools.removeFileOrDir(target) and tools.copyFileOrDir(applicationPath+"/temp/backup",target)):
+                tools.removeFileOrDir(applicationPath+"/temp/backup")
+                print unicode("回退成功！","UTF-8")
+            else:
+                print unicode("回退失败","UTF-8")
+        else:
+            print unicode("部署成功！","UTF-8")
                 
     def init(self):
         "入口函数处理命令行参数"
@@ -297,6 +406,9 @@ class Core():
             elif(sys.argv[1]=='--release'):
                 "显示提交的版本列表"
                 self.__release()
+            elif(sys.argv[1]=='--deploy'):
+                "部署代码"
+                self.__deploy(sys.argv[2],sys.argv[3])
                                    
 applicationPath=os.path.dirname(os.path.realpath(__file__))
 

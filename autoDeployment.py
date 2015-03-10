@@ -125,7 +125,7 @@ class PatchSystem():
         "获取差异列表"
         result=[]
         result=self.__checkDifferent(newLists,oldList,result,"add")
-        result=self.__checkDifferen(oldList,newLists,result,"delete")
+        result=self.__checkDifferent(oldList,newLists,result,"delete")
         return result
                 
     def __checkDifferent(self,a,b,lists,status):
@@ -200,7 +200,17 @@ class FsSaveGetSystem():
                 out_fp.close()
             else:
                 print unicode("忽略文件：%s"%(path),"UTF-8")
-            
+    def getFile(self,md5):
+        "获取特定md5的数据流"
+        global applicationPath
+        path=applicationPath+"/fsData/"+md5[0:8]+"/"+md5[8:16]+"/"+md5[16:24]+"/"+md5[24:32]
+        if(os.path.exists(path)):
+            fp=open(path,'rb')
+            text=fp.read()
+            fp.close()
+            return True,text
+        else:
+            return False,None            
         
         
 #--------------------------------------------
@@ -346,7 +356,7 @@ class Core():
         global applicationPath
         
         #提取版本列表
-        path=applicationPath+"/"+version+"/new"
+        path=applicationPath+"/version/"+version+"/new"
         if(os.path.exists(path)):
             #新版
             fp=open(path,'r')
@@ -362,8 +372,30 @@ class Core():
             
             #检测新版是否可以部署（文件完整性）
             if(True):
+                tools=Tools()
+                fsSaveGetSystem=FsSaveGetSystem()
                 for command in updateList:
-                    print command
+                    texts=command.split("|")
+                    if(texts[2]=="add" or texts[2]=="update"):
+                        fpPath=target+"/"+base64.b64decode(texts[0])
+                        if(texts[1]=="#"):
+                            #文件夹
+                            if(not os.path.exists(fpPath)):
+                                os.makedirs(fpPath)
+                        else:
+                            #文件
+                            result,text=fsSaveGetSystem.getFile(texts[1])
+                            if(result):
+                                dirPath=os.path.dirname(fpPath)
+                                if(not os.path.exists(dirPath)):
+                                    os.makedirs(dirPath)
+                                fp=open(fpPath,'wb')
+                                fp.write(text)
+                                fp.close()
+                    elif(texts[2]=="delete"):
+                        print target+"/"+base64.b64decode(texts[0])
+                        if(base64.b64decode(texts[0])!="."):
+                            tools.removeFileOrDir(target+"/"+base64.b64decode(texts[0]))
             else:
                 print unicode("由于缺失文件，部署终止！","UTF-8")
                 return -2

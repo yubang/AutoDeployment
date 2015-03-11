@@ -25,7 +25,8 @@ import os,sys,hashlib,json,re,base64,time
 class Tools():
     "工具类"
     def __init__(self):
-        pass
+        global log
+        self.__log=log
     def removeFileOrDir(self,path):
         "删除文件或递归删除文件夹"
         result=True
@@ -57,9 +58,11 @@ class Tools():
                 out_fp.write(in_fp.read())
                 in_fp.close()
                 out_fp.close()
+                self.__log.log(unicode("文件复制：%s -> %s"%(oldPath,newPath),"UTF-8"),"fileOption")
             else:
                 if(not os.path.exists(newPath)):
                     os.makedirs(newPath)
+                    self.__log.log(unicode("创建文件夹：%s"%(newPath),"UTF-8"),"fileOption")
                 fps=os.listdir(oldPath)
                 for fp in fps:
                     result=self.copyFileOrDir(oldPath+"/"+fp,newPath+"/"+fp)
@@ -109,6 +112,7 @@ class PatchSystem():
         global applicationPath
         dirPath=applicationPath+"/patch/patch/data/"
         os.makedirs(dirPath)
+        tools=Tools()
         for temp in lists:
             texts=temp.split("|")
             if(texts[2]=="add" and texts[1]!="#"):
@@ -116,12 +120,8 @@ class PatchSystem():
                 targetDirPath=dirPath+texts[1][0:8]+"/"+texts[1][8:16]+"/"+texts[1][16:24]
                 if(not os.path.exists(targetDirPath)):
                     os.makedirs(targetDirPath)
-                in_fp=open(filePath,'rb')
-                out_fp=open(targetDirPath+"/"+texts[1][24:32],'wb')
-                out_fp.write(in_fp.read())
-                in_fp.close()
-                out_fp.close()
-    
+                tools.copyFileOrDir(filePath,targetDirPath+"/"+texts[1][24:32])
+                
     def getDifferentList(self,newLists,oldList):
         "获取差异列表"
         result=[]
@@ -192,7 +192,7 @@ class FsCheckSystem():
 class FsSaveGetSystem():
     "文件仓库存储系统类"
     def __init__(self):
-        pass
+        self.__tools=Tools()
     def addNewFile(self,filePath,path="."):
         "添加新文件到文件仓库"
         global applicationPath
@@ -204,11 +204,7 @@ class FsSaveGetSystem():
                 self.addNewFile(filePath+"/"+fp,path+"/"+fp)
         else:
             if(not os.path.exists(applicationPath+"/fsData/"+path)):
-                in_fp=open(filePath,'rb')
-                out_fp=open(applicationPath+"/fsData/"+path,'wb')
-                out_fp.write(in_fp.read())
-                in_fp.close()
-                out_fp.close()
+                self.__tools.copyFileOrDir(filePath,applicationPath+"/fsData/"+path)
             else:
                 print unicode("忽略文件：%s"%(path),"UTF-8")
     def getFile(self,md5):
@@ -239,7 +235,27 @@ class FsSaveGetSystem():
 class LogSystem():
     "日记系统" 
     def __init__(self):
-        pass
+        global applicationPath
+        self.__path=applicationPath+"/log/"+time.strftime("%Y%m%d")
+        self.__createDir()
+        self.__loginLog()
+    def __createDir(self):
+        "创建文件夹"
+        if(not os.path.exists(self.__path)):
+            os.makedirs(self.__path)
+    def __loginLog(self):
+        "向日记写入空行"
+        self.log("\n\n","option")
+        self.log("\n\n","fileOption")
+    def log(self,message,logType):
+        "记录日记"
+        print message
+        if(type(message).__name__=="unicode"):
+            message=message.encode("UTF-8")
+        fp=open(self.__path+"/"+logType+".log",'a')
+        fp.write(message)
+        fp.write("\n")
+        fp.close()
         
         
 #--------------------------------------------
@@ -258,7 +274,10 @@ class Core():
     "自动化系统核心类"
     def __init__(self):
         self.__createDir()
-        
+        global log
+        log=LogSystem()
+        self.__log=log
+        self.__tools=Tools()
     def __del__(self):
         self.__deleteTempDirFile()
         
@@ -305,10 +324,10 @@ class Core():
         "生成补丁包"
         global applicationPath
         if(not os.path.exists(sys.argv[2])):
-            print unicode("文件（%s）不存在！"%(sys.argv[2]),"UTF-8")
+            self.__log.log(unicode("文件（%s）不存在！"%(sys.argv[2]),"UTF-8"),"option")
             return None
         elif(not os.path.exists(sys.argv[3])):
-            print unicode("文件（%s）不存在！"%(sys.argv[3]),"UTF-8")
+            self.__log.log(unicode("文件（%s）不存在！"%(sys.argv[3]),"UTF-8"),"option")
             return None
         else:
             dao=FsToDataSystem()
@@ -330,7 +349,7 @@ class Core():
             patchSystem=PatchSystem()
             result=patchSystem.buildPatch(lists1,lists2,applicationPath+"/patch/patch",sys.argv[2])
             if(result):
-                print unicode("生成补丁包完成，补丁包(文件夹)输出于：%s"%(applicationPath+"/patch/patch"),"UTF-8")
+                self.__log.log(unicode("生成补丁包完成，补丁包(文件夹)输出于：%s"%(applicationPath+"/patch/patch"),"UTF-8"),"option")
     
     def __commit(self):
         "提交一个补丁包"
@@ -344,25 +363,17 @@ class Core():
         os.makedirs(targetPath)
         
         if(not os.path.exists(sys.argv[2])):
-            print unicode("补丁包（%s）不存在"%(sys.argv[2]),"UTF-8")
+            self.__log.log(unicode("补丁包（%s）不存在"%(sys.argv[2]),"UTF-8"),"option")
             return None
         
-        in_fp=open(sys.argv[2]+"/new",'rb')
-        out_fp=open(targetPath+"/new",'wb')
-        out_fp.write(in_fp.read())
-        in_fp.close()
-        out_fp.close()
         
-        in_fp=open(sys.argv[2]+"/update",'rb')
-        out_fp=open(targetPath+"/update",'wb')
-        out_fp.write(in_fp.read())
-        in_fp.close()
-        out_fp.close()
+        self.__tools.copyFileOrDir(sys.argv[2]+"/new",targetPath+"/new")
+        self.__tools.copyFileOrDir(sys.argv[2]+"/update",targetPath+"/update")
         
         #文件仓库加入新增文件
         fsSaveGetSystem=FsSaveGetSystem()
         fsSaveGetSystem.addNewFile(sys.argv[2]+"/data")
-        print unicode("成功处理补丁包，当前版本号：%d"%(v),"UTF-8")
+        self.__log.log(unicode("成功处理补丁包，当前版本号：%d"%(v),"UTF-8"),"option")
     
     def __release(self):
         "显示当前的提交的版本列表"
@@ -425,24 +436,24 @@ class Core():
                         if(base64.b64decode(texts[0])!="."):
                             tools.removeFileOrDir(target+"/"+base64.b64decode(texts[0]))
             else:
-                print unicode("由于缺失文件，部署终止！","UTF-8")
+                self.__log.log(unicode("由于缺失文件，部署终止！","UTF-8"),"option")
                 return -2
             
         else:
-            print unicode("该版本（%s）不存在"%(version),"UTF-8")
+            self.__log.log(unicode("该版本（%s）不存在"%(version),"UTF-8"),"option")
             return -1
         
         #部署阶段完成，等待用户确认
-        print unicode("代码部署完成，请检查部署情况，如果需要回退请按R或r，其它则不回退！","UTF-8")
+        self.__log.log(unicode("代码部署完成，请检查部署情况，如果需要回退请按R或r，其它则不回退！","UTF-8"),"option")
         ch=raw_input(unicode("请输入：","UTF-8").encode("UTF-8"))
         if(ch=='r' or ch == 'R'):
             if(tools.removeFileOrDir(target) and tools.copyFileOrDir(applicationPath+"/temp/backup",target)):
                 tools.removeFileOrDir(applicationPath+"/temp/backup")
-                print unicode("回退成功！","UTF-8")
+                self.__log.log(unicode("回退成功！","UTF-8"),"option")
             else:
-                print unicode("回退失败","UTF-8")
+                self.__log.log(unicode("回退失败","UTF-8"),"option")
         else:
-            print unicode("部署成功！","UTF-8")
+            self.__log.log(unicode("部署成功！","UTF-8"),"option")
                 
     def init(self):
         "入口函数处理命令行参数"
@@ -451,21 +462,26 @@ class Core():
         else:
             if(sys.argv[1]=='--list'):
                 "获取文件md5列表"
+                self.__log.log(unicode("获取文件md5列表","UTF-8"),"option")
                 self.__list()
             elif(sys.argv[1]=='--patch'):
                 "生成补丁包"
+                self.__log.log(unicode("生成补丁包","UTF-8"),"option")
                 self.__patch()
             elif(sys.argv[1]=='--commit'):
                 "提交一个补丁包"
+                self.__log.log(unicode("提交补丁包","UTF-8"),"option")
                 self.__commit()        
             elif(sys.argv[1]=='--release'):
                 "显示提交的版本列表"
                 self.__release()
             elif(sys.argv[1]=='--deploy'):
                 "部署代码"
+                self.__log.log(unicode("部署代码","UTF-8"),"option")
                 self.__deploy(sys.argv[2],sys.argv[3])
                                    
 applicationPath=os.path.dirname(os.path.realpath(__file__))
+log=None
 
 if __name__ == "__main__":
     core=Core()

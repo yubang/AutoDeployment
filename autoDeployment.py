@@ -19,6 +19,63 @@ temp 临时目录
 
 import os,sys,hashlib,json,re,base64,time
 
+#-------------------------------------------
+#配置文件类
+#-------------------------------------------
+class Config():
+    "配置文件类"
+    def __init__(self):
+        "初始化"
+        global log
+        self.__log=log
+        self.DATA={
+            'ignore':[],
+            'copy':[],
+            'server':{},
+            'client':{},
+        }
+        self.__load()
+    def __load(self):
+        "尝试加载配置文件"
+        global applicationPath
+        configFilePath=applicationPath+"/config.cnf"
+        if(os.path.exists(configFilePath)):
+            fp=open(configFilePath,'r')
+            for temp in fp:
+                self.__dealConfig(temp)
+            fp.close()
+    def __dealConfig(self,data):            
+        "处理配置"
+        data=data.rstrip()
+        data=re.sub(r'^[\s]*','',data)
+        if(data[0:1]=="["):
+            #配置类型改变
+            data=re.sub(r'\].*','',data)
+            data=data[1:len(data)]
+            self.__sign=data
+        elif(data[0:1]=="#"):
+            #注释行忽略
+            pass
+        else:
+            #配置数据
+            self.__setConfig(data)
+    def __setConfig(self,data):
+        "设置属性"
+        if(data==""):
+            return None
+        if(self.__sign=='ignore'):
+            self.DATA['ignore'].append(data)
+            self.__log.log(unicode("添加忽略表达式：%s"%(data),"UTF-8"),"temp")
+        elif(self.__sign=='copy'):
+            self.DATA['copy'].append(data)
+            self.__log.log(unicode("添加复制表达式：%s"%(data),"UTF-8"),"temp")                      
+    def checkIgnore(self,path):
+        "检测路径是不是匹配忽略列表"
+        for el in self.DATA['ignore']:
+            if(re.match(el,path)!=None):
+                return True
+        return False
+        
 #--------------------------------------------
 #工具类
 #--------------------------------------------
@@ -48,6 +105,7 @@ class Tools():
         result=True
         if(os.path.exists(oldPath)):
             if(os.path.isfile(oldPath)):
+                
                 #防止父目录不存在
                 path=os.path.dirname(newPath)
                 if(not os.path.exists(path)):
@@ -71,7 +129,27 @@ class Tools():
         else:
             result=False
         return result
-        
+    def copyFromEl(self,oldPath,newPath,key=".",el=None):
+        "根据规则复制"
+        result=None
+        if(not os.path.exists(oldPath)):
+            result=False
+        else:
+            result=True
+            if(os.path.isfile(oldPath)):
+                for t in el:
+                    if(re.match(t,key)!=None):
+                        #启用复制
+                        self.copyFileOrDir(oldPath,newPath)
+                        self.__log.log(unicode("文件覆盖：%s -> %s"%(oldPath,newPath),"UTF-8"),"fileOption")
+                        break            
+            else:
+                fps=os.listdir(oldPath)
+                for fp in fps:
+                    self.copyFromEl(oldPath+"/"+fp,newPath+"/"+fp,key+"/"+fp,el)
+                    if(not os.path.exists(newPath)):
+                        os.makedirs(newPath)
+        return result            
 
 #--------------------------------------------
 #文件列表转md5列表
@@ -79,9 +157,12 @@ class Tools():
 class FsToDataSystem():
     "文件列表转md5列表处理类"
     def __init__(self):
-        pass
+        global config,log
+        self.__config=config
+        self.__log=log
     def getMd5Lists(self,path,key='.',lists=None):
         "获取一个文件夹的所有md5列表"
+        
         if(lists==None):
             lists={}
         if(not os.path.exists(path)):
@@ -91,12 +172,18 @@ class FsToDataSystem():
             fps=os.listdir(path)
             for fp in fps:
                 lists=self.getMd5Lists(path+"/"+fp,key+"/"+fp,lists)
-            lists[key]="#"
+            if(self.__config.checkIgnore(key)):
+                self.__log.log(unicode("忽略文件：%s"%(path),"UTF-8"),'getMd5')
+            else:
+                lists[key]="#"
         else:
-            fp=open(path,'rb')
-            md5=hashlib.md5(fp.read()).hexdigest()
-            fp.close()
-            lists[key]=md5
+            if(self.__config.checkIgnore(key)):
+                self.__log.log(unicode("忽略文件：%s"%(path),"UTF-8"),'getMd5')
+            else:
+                fp=open(path,'rb')
+                md5=hashlib.md5(fp.read()).hexdigest()
+                fp.close()
+                lists[key]=md5
         return lists        
 
 
@@ -275,7 +362,6 @@ class Core():
     def __init__(self):
         self.__createDir()
         global log
-        log=LogSystem()
         self.__log=log
         self.__tools=Tools()
     def __del__(self):
@@ -443,6 +529,10 @@ class Core():
             self.__log.log(unicode("该版本（%s）不存在"%(version),"UTF-8"),"option")
             return -1
         
+        #根据规则提取旧文件覆盖
+        global config
+        tools.copyFromEl(applicationPath+"/temp/backup",target,".",config.DATA['copy'])
+        
         #部署阶段完成，等待用户确认
         self.__log.log(unicode("代码部署完成，请检查部署情况，如果需要回退请按R或r，其它则不回退！","UTF-8"),"option")
         ch=raw_input(unicode("请输入：","UTF-8").encode("UTF-8"))
@@ -479,9 +569,12 @@ class Core():
                 "部署代码"
                 self.__log.log(unicode("部署代码","UTF-8"),"option")
                 self.__deploy(sys.argv[2],sys.argv[3])
+
                                    
 applicationPath=os.path.dirname(os.path.realpath(__file__))
-log=None
+log=LogSystem()
+config=Config()
+
 
 if __name__ == "__main__":
     core=Core()
